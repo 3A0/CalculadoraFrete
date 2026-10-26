@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Calculadora de Frete</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: formulário à esquerda (rota + premissas), "conhecimento de frete" à direita; tabela de rotas abaixo.
+   Cores das entradas seguem a planilha: amarelo = preencher, laranja = vem da rota, azul = resultado. */
+:root {
+  --bg: #eef1f4;
+  --surface: #ffffff;
+  --ink: #17202b;
+  --muted: #5b6878;
+  --line: #d3d9e1;
+  --fill: #f9e27a;       /* amarelo: preencher */
+  --fill-ink: #5a4700;
+  --route: #f4a340;      /* laranja: vem da rota */
+  --route-ink: #6b3a00;
+  --result: #1677b8;     /* azul: resultado */
+  --result-soft: #e3f0fa;
+  --good: #1f7a4d;
+  --bad: #b3362b;
+  --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --font-body: "Barlow", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #11161c; --surface: #19212a; --ink: #e6ebf1; --muted: #93a1b2; --line: #2c3743;
+  --fill: #c9ad2e; --fill-ink: #fff6cc; --route: #d98a2b; --route-ink: #fff0dc;
+  --result: #4aa8e8; --result-soft: #15293a; --good: #52c48a; --bad: #ef7a6f; color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --bg: #11161c; --surface: #19212a; --ink: #e6ebf1; --muted: #93a1b2; --line: #2c3743;
+  --fill: #c9ad2e; --fill-ink: #fff6cc; --route: #d98a2b; --route-ink: #fff0dc;
+  --result: #4aa8e8; --result-soft: #15293a; --good: #52c48a; --bad: #ef7a6f; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.45; }
+.wrap { max-width: 1120px; margin: 0 auto; padding-block: 28px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 24px; }
+header h1 { font-family: var(--font-display); font-weight: 700; font-size: 2.4rem; letter-spacing: .01em; margin: 0; line-height: 1; text-transform: uppercase; text-wrap: balance; }
+header p { margin: 6px 0 0; color: var(--muted); }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; font-size: .85rem; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }
+.main { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 820px) { .main { grid-template-columns: 1fr; } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 20px; display: grid; gap: 18px; min-width: 0; }
+.eyebrow { font-family: var(--font-display); font-weight: 600; text-transform: uppercase; letter-spacing: .08em; font-size: .85rem; color: var(--muted); margin: 0; }
+label { font-weight: 500; font-size: .9rem; display: block; margin-bottom: 4px; }
+select, input { width: 100%; font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 9px 10px; }
+input { font-family: var(--font-mono); font-size: .95rem; font-variant-numeric: tabular-nums; }
+select:focus-visible, input:focus-visible, button:focus-visible, tr:focus-visible { outline: 2px solid var(--result); outline-offset: 1px; }
+.in-fill { border-left: 6px solid var(--fill); }
+.in-route { border-left: 6px solid var(--route); }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 460px) { .grid2 { grid-template-columns: 1fr; } }
+.hint { font-size: .78rem; color: var(--muted); margin-top: 3px; }
+.route-facts { display: flex; flex-wrap: wrap; gap: 8px; font-size: .85rem; }
+.chip { border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; font-family: var(--font-mono); font-size: .78rem; }
+.reset { justify-self: start; background: none; border: 1px solid var(--line); color: var(--ink); border-radius: 6px; padding: 6px 10px; font: inherit; font-size: .85rem; cursor: pointer; }
+.reset:hover { border-color: var(--route); }
+
+/* Conhecimento de frete */
+.cte { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; min-width: 0; }
+.cte-head { background: var(--result); color: #fff; padding: 16px 20px; }
+.cte-head .eyebrow { color: rgba(255,255,255,.8); }
+.total { font-family: var(--font-display); font-weight: 700; font-size: 3rem; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.cte-route { font-family: var(--font-mono); font-size: .8rem; opacity: .9; margin-top: 4px; }
+.cte-body { padding: 16px 20px 20px; display: grid; gap: 14px; }
+.lines { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.lines td { padding: 6px 0; border-bottom: 1px dashed var(--line); vertical-align: top; }
+.lines td:last-child { text-align: right; font-family: var(--font-mono); white-space: nowrap; padding-left: 12px; }
+.lines .calc { display: block; font-family: var(--font-mono); font-size: .72rem; color: var(--muted); }
+.lines tr.sub td { font-weight: 600; border-bottom: 1px solid var(--ink); }
+.lines tr.fin td { font-weight: 700; color: var(--result); border-bottom: none; font-size: 1.05rem; }
+.kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.kpi { background: var(--result-soft); border-radius: 6px; padding: 8px 10px; min-width: 0; }
+.kpi b { display: block; font-family: var(--font-mono); font-size: .95rem; font-variant-numeric: tabular-nums; }
+.kpi small { color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; }
+.compare { font-size: .88rem; border-top: 1px solid var(--line); padding-top: 12px; }
+.pos { color: var(--good); font-weight: 600; } .neg { color: var(--bad); font-weight: 600; }
+.copy { background: var(--ink); color: var(--surface); border: 0; border-radius: 6px; padding: 10px 14px; font: inherit; font-weight: 600; cursor: pointer; }
+.copy-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+#copied { font-size: .85rem; color: var(--good); }
+textarea.fallback { width: 100%; font-family: var(--font-mono); font-size: .8rem; min-height: 120px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
+
+/* Tabela de rotas */
+.tbl-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+table.routes { width: 100%; border-collapse: collapse; font-size: .88rem; min-width: 680px; font-variant-numeric: tabular-nums; }
+.routes th, .routes td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.routes th { font-family: var(--font-display); text-transform: uppercase; letter-spacing: .06em; font-size: .8rem; color: var(--muted); font-weight: 600; }
+.routes td.num { text-align: right; font-family: var(--font-mono); font-size: .82rem; }
+.routes tbody tr { cursor: pointer; }
+.routes tbody tr:hover { background: var(--result-soft); }
+.routes tbody tr.sel { background: var(--result-soft); box-shadow: inset 4px 0 0 var(--result); }
+.note { font-size: .82rem; color: var(--muted); max-width: 75ch; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <h1>Calculadora de Frete</h1>
+    <p>Origem fixa: São Paulo – SP · CEP 05094-010. Escolha a rota, preencha a carga e veja o valor final.</p>
+    <div class="legend">
+      <span><i class="sw" style="background:var(--fill)"></i>Preencher</span>
+      <span><i class="sw" style="background:var(--route)"></i>Vem da rota (pode ajustar)</span>
+      <span><i class="sw" style="background:var(--result)"></i>Resultado</span>
+    </div>
+  </header>
+
+  <div class="main">
+    <form class="panel" id="form" novalidate>
+      <div>
+        <p class="eyebrow">Rota</p>
+        <label for="rota">Destino</label>
+        <select id="rota"></select>
+        <div class="route-facts" id="facts" style="margin-top:8px"></div>
+      </div>
+
+      <div class="grid2">
+        <div><label for="dist">Distância (km)</label><input id="dist" class="in-route" type="number" min="0" step="1" inputmode="decimal"></div>
+        <div><label for="ckm">Custo por km (R$)</label><input id="ckm" class="in-route" type="number" min="0" step="0.01" inputmode="decimal"></div>
+      </div>
+      <button type="button" class="reset" id="resetRoute">Voltar aos valores da rota</button>
+
+      <div>
+        <p class="eyebrow">Carga</p>
+        <div class="grid2">
+          <div><label for="peso">Peso (kg)</label><input id="peso" class="in-fill" type="number" min="0" step="1" inputmode="decimal"></div>
+          <div><label for="carga">Valor da carga (R$)</label><input id="carga" class="in-fill" type="number" min="0" step="0.01" inputmode="decimal"></div>
+        </div>
+      </div>
+
+      <div>
+        <p class="eyebrow">Taxas e margem</p>
+        <div class="grid2">
+          <div><label for="tkg">Taxa por kg (R$)</label><input id="tkg" type="number" min="0" step="0.01" inputmode="decimal"></div>
+          <div><label for="gris">Seguro / GRIS (%)</label><input id="gris" type="number" min="0" step="0.01" inputmode="decimal"></div>
+          <div><label for="fixa">Taxa fixa (R$)</label><input id="fixa" type="number" min="0" step="0.01" inputmode="decimal"></div>
+          <div><label for="margem">Margem de lucro (%)</label><input id="margem" class="in-fill" type="number" step="0.1" inputmode="decimal"></div>
+        </div>
+      </div>
+    </form>
+
+    <section class="cte" aria-live="polite">
+      <div class="cte-head">
+        <p class="eyebrow">Valor final do frete</p>
+        <div class="total" id="total">R$ 0,00</div>
+        <div class="cte-route" id="cteRoute"></div>
+      </div>
+      <div class="cte-body">
+        <table class="lines"><tbody id="lines"></tbody></table>
+        <div class="kpis">
+          <div class="kpi"><small>Prazo</small><b id="kPrazo">–</b></div>
+          <div class="kpi"><small>R$ / km final</small><b id="kKm">–</b></div>
+          <div class="kpi"><small>R$ / kg final</small><b id="kKg">–</b></div>
+        </div>
+        <div class="compare" id="compare"></div>
+        <div class="copy-row">
+          <button type="button" class="copy" id="copy">Copiar cotação</button>
+          <span id="copied" hidden>Cotação copiada</span>
+        </div>
+        <textarea class="fallback" id="fallback" readonly hidden></textarea>
+      </div>
+    </section>
+  </div>
+
+  <section style="display:grid;gap:10px">
+    <p class="eyebrow">Tabela de rotas · clique numa linha para usar</p>
+    <div class="tbl-wrap">
+      <table class="routes">
+        <thead><tr><th>Rota</th><th>Destino</th><th>CEP</th><th>Prazo</th><th style="text-align:right">Distância</th><th style="text-align:right">Custo/km</th><th style="text-align:right">Cotação Aurora</th></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <p class="note">Fórmula (a mesma da planilha): Subtotal = Distância × Custo/km + Peso × Taxa/kg + Valor da carga × GRIS + Taxa fixa. Valor final = Subtotal × (1 + Margem). O custo/km de cada rota vem da coluna “Custo por KM” da aba CALCULADORA; a cotação Aurora vem da aba “valores enviados Aurora”.</p>
+  </section>
+</div>
+
+<script>
+// [UF, destino, CEP, prazo D+, distância km, custo/km, cotação Aurora (null = pacote até 200 km)]
+const ROTAS = [
+["SP","Campinas (região) – SP","13010-000",1,100,8.24,null],
+["SP","Sorocaba (região) – SP","18010-000",1,100,8.24,null],
+["SP","São José dos Campos (região) – SP","12210-000",1,90,9.15,null],
+["SP","Bauru – SP","17010-000",1,330,2.75,1500],
+["SP","Marília – SP","17500-000",1,435,2.18,1500],
+["SP","Ribeirão Preto (região) – SP","14010-000",1,315,2.87,1500],
+["SP","São José do Rio Preto – SP","15010-000",1,440,2.16,1500],
+["PR","Curitiba – PR","80010-000",1,408,2.33,1500],
+["PR","Londrina – PR","86010-000",2,530,1.91,1500],
+["PR","Maringá – PR","87010-000",2,615,1.64,1500],
+["SC","Itajaí – SC","88301-000",2,605,1.68,1500],
+["SC","Florianópolis – SC","88010-000",2,705,1.46,1500],
+["SC","Chapecó – SC","89801-000",2,960,1.4,1900],
+["RS","Passo Fundo – RS","99010-000",2,990,1.35,1900],
+["RS","Porto Alegre – RS","90010-000",2,1110,1.15,1900],
+["MG","Belo Horizonte – MG","30110-000",2,585,1.71,1500],
+["RJ","Rio de Janeiro – RJ","20010-000",1,435,2.16,1500],
+["DF","Brasília – DF","70040-010",2,1010,1.1,1600],
+["GO","Goiânia – GO","74003-010",2,910,1.21,1600],
+["BA","Salvador – BA","40020-000",5,1960,0.72,2000],
+["PE","Recife – PE","50010-000",5,2630,0.77,2500],
+["PB","João Pessoa – PB","58010-000",5,2730,0.74,2500],
+["RN","Natal – RN","59010-000",5,2910,0.7,2500],
+["CE","Fortaleza – CE","60010-000",5,3120,0.66,2500],
+["MA","São Luís – MA","65010-000",5,2970,0.69,2500],
+["PA","Belém – PA","66010-000",10,2930,0.7,2500],
+["AP","Macapá – AP","68900-000",5,3300,1.41,5500]
+].map(([uf,dest,cep,prazo,km,ckm,aurora],i)=>({i,uf,dest,cep,prazo,km,ckm,aurora}));
+
+// Exemplo inicial = valores da aba CALCULADORA (rota Macapá)
+const DEFAULTS = { rota: 26, peso: 800, carga: 20000, tkg: 0.10, gris: 0.5, fixa: 15, margem: 15 };
+
+const $ = id => document.getElementById(id);
+const brl = v => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const num = (v, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
+const val = id => { const n = parseFloat($(id).value); return isFinite(n) ? n : 0; };
+
+function fillSelect() {
+  const groups = {};
+  ROTAS.forEach(r => (groups[r.uf] ||= []).push(r));
+  $("rota").innerHTML = Object.entries(groups).map(([uf, rs]) =>
+    `<optgroup label="SP → ${uf}">${rs.map(r => `<option value="${r.i}">${r.dest} · CEP ${r.cep}</option>`).join("")}</optgroup>`
+  ).join("");
+  $("tbody").innerHTML = ROTAS.map(r => `<tr data-i="${r.i}" tabindex="0">
+    <td>SP → ${r.uf}</td><td>${r.dest}</td><td>${r.cep}</td><td>D+${r.prazo}</td>
+    <td class="num">${num(r.km, 0)} km</td><td class="num">${num(r.ckm)}</td>
+    <td class="num">${r.aurora == null ? "Pacote até 200 km" : brl(r.aurora)}</td></tr>`).join("");
+}
+
+function applyRoute(i) {
+  const r = ROTAS[i];
+  $("rota").value = i;
+  $("dist").value = r.km;
+  $("ckm").value = r.ckm;
+  calc();
+}
+
+function calc() {
+  const r = ROTAS[+$("rota").value];
+  const dist = val("dist"), ckm = val("ckm"), peso = val("peso"), carga = val("carga");
+  const tkg = val("tkg"), gris = val("gris") / 100, fixa = val("fixa"), margem = val("margem") / 100;
+
+  const fDist = dist * ckm, fPeso = peso * tkg, fGris = carga * gris;
+  const sub = fDist + fPeso + fGris + fixa;
+  const vMargem = sub * margem;
+  const total = sub + vMargem;
+
+  $("total").textContent = brl(total);
+  $("cteRoute").textContent = `05094-010 São Paulo – SP → ${r.cep} ${r.dest}`;
+  $("facts").innerHTML = `<span class="chip">CEP ${r.cep}</span><span class="chip">D+${r.prazo}</span>` +
+    `<span class="chip">${num(r.km, 0)} km</span><span class="chip">R$ ${num(r.ckm)}/km</span>`;
+
+  const row = (t, c, v, cls = "") => `<tr class="${cls}"><td>${t}${c ? `<span class="calc">${c}</span>` : ""}</td><td>${brl(v)}</td></tr>`;
+  $("lines").innerHTML =
+    row("Frete por distância", `${num(dist, 0)} km × R$ ${num(ckm)}`, fDist) +
+    row("Taxa por peso", `${num(peso, 0)} kg × R$ ${num(tkg)}`, fPeso) +
+    row("Seguro / GRIS", `${brl(carga)} × ${num(gris * 100)}%`, fGris) +
+    row("Taxa fixa", "", fixa) +
+    row("Subtotal do custo", "", sub, "sub") +
+    row("Margem de lucro", `${num(margem * 100, 1)}% sobre o subtotal`, vMargem) +
+    row("Valor final do frete", "", total, "fin");
+
+  $("kPrazo").textContent = `D+${r.prazo}`;
+  $("kKm").textContent = dist > 0 ? `R$ ${num(total / dist)}` : "–";
+  $("kKg").textContent = peso > 0 ? `R$ ${num(total / peso)}` : "–";
+
+  if (r.aurora == null) {
+    $("compare").innerHTML = `<b>Cotação Aurora:</b> pacote fechado até 200 km (sem valor informado na planilha).`;
+  } else {
+    const diff = total - r.aurora, pct = diff / r.aurora * 100;
+    const cls = diff <= 0 ? "pos" : "neg";
+    const word = diff <= 0 ? "abaixo" : "acima";
+    $("compare").innerHTML = `<b>Cotação Aurora:</b> ${brl(r.aurora)} · seu valor está ` +
+      `<span class="${cls}">${brl(Math.abs(diff))} (${num(Math.abs(pct), 1)}%) ${word}</span>.`;
+  }
+
+  document.querySelectorAll("#tbody tr").forEach(tr => tr.classList.toggle("sel", +tr.dataset.i === r.i));
+  return { r, dist, ckm, peso, carga, tkg, gris, fixa, margem, fDist, fPeso, fGris, sub, vMargem, total };
+}
+
+function summary() {
+  const c = calc();
+  return [
+    `COTAÇÃO DE FRETE`,
+    `Rota: São Paulo – SP (05094-010) → ${c.r.dest} (${c.r.cep})`,
+    `Prazo: D+${c.r.prazo}`,
+    `Distância: ${num(c.dist, 0)} km × R$ ${num(c.ckm)}/km = ${brl(c.fDist)}`,
+    `Peso: ${num(c.peso, 0)} kg × R$ ${num(c.tkg)}/kg = ${brl(c.fPeso)}`,
+    `Seguro/GRIS: ${num(c.gris * 100)}% de ${brl(c.carga)} = ${brl(c.fGris)}`,
+    `Taxa fixa: ${brl(c.fixa)}`,
+    `Subtotal: ${brl(c.sub)}`,
+    `Margem (${num(c.margem * 100, 1)}%): ${brl(c.vMargem)}`,
+    `VALOR FINAL: ${brl(c.total)}`
+  ].join("\n");
+}
+
+fillSelect();
+$("peso").value = DEFAULTS.peso; $("carga").value = DEFAULTS.carga; $("tkg").value = DEFAULTS.tkg;
+$("gris").value = DEFAULTS.gris; $("fixa").value = DEFAULTS.fixa; $("margem").value = DEFAULTS.margem;
+applyRoute(DEFAULTS.rota);
+
+$("rota").addEventListener("change", e => applyRoute(+e.target.value));
+$("form").addEventListener("input", e => { if (e.target.id !== "rota") calc(); });
+$("form").addEventListener("submit", e => e.preventDefault());
+$("resetRoute").addEventListener("click", () => applyRoute(+$("rota").value));
+$("tbody").addEventListener("click", e => { const tr = e.target.closest("tr"); if (tr) applyRoute(+tr.dataset.i); });
+$("tbody").addEventListener("keydown", e => { if ((e.key === "Enter" || e.key === " ") && e.target.dataset.i) { e.preventDefault(); applyRoute(+e.target.dataset.i); } });
+$("copy").addEventListener("click", () => {
+  const text = summary();
+  const ok = () => { $("copied").hidden = false; setTimeout(() => $("copied").hidden = true, 2000); };
+  const fail = () => { const t = $("fallback"); t.value = text; t.hidden = false; t.select(); };
+  try { navigator.clipboard.writeText(text).then(ok, fail); } catch (_) { fail(); }
+});
+</script>
+</body>
+</html>
